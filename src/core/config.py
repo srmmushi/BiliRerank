@@ -2,13 +2,19 @@
 
 import os
 import shutil
+import sys
 
 APP_NAME = "BiliHook"
 VERSION = "0.5.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.dirname(HERE)
-ROOT = os.path.dirname(SRC)
+if getattr(sys, "frozen", False):
+    # packaged with PyInstaller: the code and the bundled assets live in the
+    # temp extraction dir, everything writable has to sit next to the exe
+    ROOT = os.path.dirname(sys.executable)
+else:
+    ROOT = os.path.dirname(SRC)
 
 BUNDLED_SCRIPTS = os.path.join(SRC, "assets", "scripts")   # shipped with the code
 SCRIPT_DIR_NAME = "script"                                 # released into the config folder

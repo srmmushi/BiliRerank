@@ -44,7 +44,10 @@ def add_log(level, key, args=None, source=None):
         if len(logs) > config.MAX_LOGS:
             del logs[:-config.MAX_LOGS]
         version += 1
-    print("[%s] %-7s %s %s" % (stamp, level, key, args or ""))
+    try:        # no stdout in a --windowed build
+        print("[%s] %-7s %s %s" % (stamp, level, key, args or ""))
+    except Exception:
+        pass
 
 
 def set_items(rows):

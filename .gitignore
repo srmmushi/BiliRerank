@@ -11,6 +11,11 @@ settings.json
 # vendored PyQt-SiliconUI (see requirements.txt for how to install it)
 third_party/
 
+# build output (build.bat / pyinstaller)
+build/
+dist/
+*.spec
+
 # editors
 .vscode/
 .idea/

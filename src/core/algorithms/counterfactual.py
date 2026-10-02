@@ -23,11 +23,13 @@ import math
 from typing import Any, List
 
 from . import _util
-from ._util import algo_log, softmax
+from ._util import (algo_log, build_embeddings, cosine, playing_context, softmax,
+                    up_bucket_map)
 
 TAU = 0.34           # position temperature (fraction of n); smaller = sharper bias
 P_MIN = 0.05         # clip propensity floor
 CLIP = 2.0           # clip the IPS / DR correction term
+PLAY_BONUS = 0.2     # quality-model bonus for videos similar to the one playing
 
 
 def rerank(cards: List[Any], ctx: Any) -> List[Any]:

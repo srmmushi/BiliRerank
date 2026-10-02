@@ -5,7 +5,8 @@ Replaces the old Qt GUI: it parses the command line, starts the client watcher
 colored, i18n-aware logs to the terminal, and always cancels the injection on
 exit (Ctrl+C or process end).
 
-    python main.py [--debug [N]] [--lang zh|en] [--start-on-boot {enable|disable}]
+    python main.py [--debug [N]] [--lang zh|en] [--algorithm NAME]
+                   [--start-on-boot {enable|disable}]
 
 Flags
 -----
@@ -14,6 +15,9 @@ Flags
                detail; 5 = per-feed dimension averages, 6 = one line per video,
                7 = the full per-video breakdown.
 --lang zh|en   switch UI/log language (persisted to settings.json).
+--algorithm NAME
+               rerank algorithm: weighted/gnn/bandit/mmr/sequential/pareto/
+               counterfactual (persisted to settings.json, default gnn).
 --start-on-boot {enable|disable}
                enable  = register a background logon task (next sign-in auto
                          injects), then exit.
@@ -45,6 +49,8 @@ def _build_parser():
                    help="调试等级 1-7（默认 1；--debug 不带数字=7，显示每个视频的算法过程）")
     p.add_argument("--lang", choices=["zh", "en"], default=None,
                    help="界面/日志语言 language")
+    p.add_argument("--algorithm", choices=rerank.ALGORITHM_NAMES, default=None,
+                   help="重排算法：weighted/gnn/bandit/mmr/sequential/pareto/counterfactual")
     p.add_argument("--start-on-boot", nargs="?", const="enable",
                    choices=["enable", "disable"],
                    help="开机自启（随后退出）：enable=开启后台自启，disable=关闭；省略参数默认 enable")
@@ -120,13 +126,17 @@ def main(argv=None):
     console.configure(lang, args.debug)
     rerank.set_debug(args.debug or 0)
 
+    algorithm = args.algorithm or settings.get("algorithm", "gnn")
+    rerank.set_algorithm(algorithm)
+    settings.update(algorithm=algorithm)
+
     console.emit(time.strftime("%H:%M:%S"), "info", "cli.banner",
                  {"version": config.VERSION}, None, 1)
     console.emit(time.strftime("%H:%M:%S"), "info", "cli.lang", {"lang": lang}, None, 1)
     console.emit(time.strftime("%H:%M:%S"), "info", "cli.debug",
                  {"level": console.debug}, None, 1)
     console.emit(time.strftime("%H:%M:%S"), "info", "cli.algorithm",
-                 {"name": rerank.ALGORITHM}, None, 1)
+                 {"name": rerank.get_algorithm()}, None, 1)
 
     if args.start_on_boot:
         if args.start_on_boot == "disable":

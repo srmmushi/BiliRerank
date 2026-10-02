@@ -7,6 +7,9 @@ from . import config
 DEFAULTS = {
     "theme": "dark",
     "lang": "zh",
+    # rerank algorithm id (see core.algorithms.ALGORITHM_NAMES); persisted so the
+    # choice survives a restart and the --boot background instance uses it too
+    "algorithm": "gnn",
     # when the client shows up, inject by itself (nothing is launched here)
     "watch_client": True,
 }

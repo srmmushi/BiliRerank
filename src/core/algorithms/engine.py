@@ -56,7 +56,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import config, store
-from . import ALGORITHM, rerank as algo_rerank
+from . import ALGORITHM_NAMES, get_algorithm, set_algorithm, rerank as algo_rerank
 from ._util import set_debug as algo_set_debug
 
 # Terminal debug verbosity (0 = quiet, 1..7 as in core.log.Console). The CLI sets
@@ -1227,7 +1227,7 @@ def rank(feed: List[Any]) -> Tuple[List[Any], List[Dict[str, Any]], Dict[str, An
         "deferred": len(deferred),
         "top": round(ordered[0][0], 1) if ordered else 0.0,
         "empty": empty,
-        "algorithm": ALGORITHM,
+        "algorithm": get_algorithm(),
         "playing": playing.bvid if playing else None,
         "head": [c["title"][:22] for c in cards[:3]],
         "titles": [_clip(card.features.title, 40) for _, card in ordered],

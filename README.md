@@ -1,9 +1,9 @@
 # BiliRerank
 
-B 站 Windows 客户端的**推荐流本地重排**工具：接管客户端首页的推荐流响应，用**图神经网络（GNN · Personalized PageRank）**重排后再送回列表。全过程在本机完成，不转发、不上传任何数据。纯终端运行，无 GUI。
+B 站 Windows 客户端的**推荐流本地重排**工具：接管客户端首页的推荐流响应，用**多种重排算法（默认 GNN · Personalized PageRank）**重排后再送回列表。全过程在本机完成，不转发、不上传任何数据。纯终端运行，无 GUI。
 
 - 改写：Chrome DevTools 协议（拦截响应体并重排后回写）
-- 算法：八维打分 + 图神经网络重排（`src/core/algorithms/`）
+- 算法：八维打分 + 7 种重排算法可切换（`src/core/algorithms/`）
 - 全自动：客户端一出现就注入，退出即停止
 - 界面：终端彩色日志（默认中文）
 
@@ -16,7 +16,7 @@ src/
 ├─ cli.py                   命令行入口
 ├─ backends/  devtools.py   传输层（CDP 改写）
 └─ core/      config settings store log i18n
-              algorithms/   engine（评分引擎）+ 重排算法（gnn 为当前生效）
+              algorithms/   engine（评分引擎）+ 重排算法（7 种，--algorithm 切换）
 ```
 
 ## 安装与运行
@@ -41,18 +41,29 @@ Windows 10/11 + Python 3.10+。
 ## 命令行参数
 
 ```
-python main.py [--debug [N]] [--lang zh|en] [--start-on-boot {enable|disable}]
+python main.py [--debug [N]] [--lang zh|en] [--algorithm NAME] [--start-on-boot {enable|disable}]
 ```
 
 | 参数 | 说明 |
 |---|---|
 | `--debug [N]` | 调试等级 1-7，默认 1；裸 `--debug` = 7（逐视频算法过程）。刷新时会打印本次获取到的全部视频列表 |
 | `--lang zh\|en` | 界面/日志语言，默认中文（zh） |
+| `--algorithm NAME` | 重排算法：`weighted`/`gnn`/`bandit`/`mmr`/`sequential`/`pareto`/`counterfactual`，默认 `gnn`，持久化到 settings.json |
 | `--start-on-boot enable\|disable` | 开机自启（后台运行）开关；省略参数默认 enable |
 
-## 重排算法（写死为 GNN）
+## 重排算法
 
-每个视频先按八个维度打分（互动、时长、新鲜度、作者权威、标题质量、增长动量、兴趣匹配、多样性），再构建相似度图，从高基线分视频与**正在播放的视频**出发跑 Personalized PageRank，按传播后的分数重排，最后做同一 UP 去重顺延。算法固定为 GNN，无运行时切换；其余算法保留在 `src/core/algorithms/` 作为库。
+每个视频先按八个维度打分（互动、时长、新鲜度、作者权威、标题质量、增长动量、兴趣匹配、多样性），再由所选算法重排，最后做同一 UP 去重顺延。可用 `--algorithm` 切换：
+
+| 算法 | 思路 |
+|---|---|
+| `gnn`（默认） | 相似度建图 + Personalized PageRank，从高基线分与正在播放的视频出发传播权重 |
+| `weighted` | 八维加权基线 |
+| `bandit` | 上下文老虎机（LinUCB）在线更新权重 |
+| `mmr` | MMR + 子模贪心（相关性 + 多样性） |
+| `sequential` | 序列建模（GRU4Rec 式），预测「下一个想看」 |
+| `pareto` | 多目标帕累托优化（NSGA-II） |
+| `counterfactual` | 反事实推断（IPS / Doubly Robust）去偏 |
 
 ## 它是怎么工作的
 

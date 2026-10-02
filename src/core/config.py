@@ -4,7 +4,7 @@ import os
 import sys
 
 APP_NAME = "BiliRerank"
-VERSION = "1.0.0-pre"
+VERSION = "1.0.1"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.dirname(HERE)

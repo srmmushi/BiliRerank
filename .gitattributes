@@ -1,0 +1,6 @@
+# keep source files LF everywhere: mixed CRLF makes multi-line patches fail
+*.py text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.ico binary

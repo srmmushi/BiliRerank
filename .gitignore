@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.py[cod]
+
+# generated at run time: the released scripts, the taskbar icon, the config
+script/
+icon.ico
+settings.json
+.settings-path
+
+# vendored PyQt-SiliconUI (see requirements.txt for how to install it)
+third_party/
+
+# editors
+.vscode/
+.idea/
+*.log

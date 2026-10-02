@@ -1,3 +1,3 @@
-"""biliRerank - local feed rerank for the bilibili desktop client."""
+"""BiliRerank - local feed rerank for the bilibili desktop client."""
 
-__version__ = "0.3.0"
+__version__ = "1.0.0-pre"

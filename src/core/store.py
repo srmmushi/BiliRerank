@@ -7,11 +7,10 @@ the GUI can render the whole history in either language.
 import threading
 import time
 
-from . import config
+from . import config, log
 
 logs = []
 items = []
-scripts = {}                 # script name -> running, mirrored by the tools page
 history = []                 # lists from before a client refresh, oldest first
 version = 0
 HISTORY_LIMIT = 5
@@ -33,9 +32,13 @@ runtime = {
 _lock = threading.Lock()
 
 
-def add_log(level, key, args=None, source=None):
-    """`source` is the script a line belongs to (None for tool wide lines):
-    the log page filters on it, the tools page uses it to pick a script."""
+def add_log(level, key, args=None, source=None, v=None):
+    """`source` is the script a line belongs to (None for tool wide lines).
+
+    `v` is the verbosity (1 = most important ... 7 = deepest); core.log compares
+    it against the running debug level. When omitted it is derived from severity:
+    errors/warnings always show, success/info at v=2, debug at v=7.
+    """
     global version
     stamp = time.strftime("%H:%M:%S")
     with _lock:
@@ -44,8 +47,10 @@ def add_log(level, key, args=None, source=None):
         if len(logs) > config.MAX_LOGS:
             del logs[:-config.MAX_LOGS]
         version += 1
-    try:        # no stdout in a --windowed build
-        print("[%s] %-7s %s %s" % (stamp, level, key, args or ""))
+    if v is None:
+        v = {"error": 0, "warn": 0, "success": 2, "info": 2, "debug": 7}.get(level, 2)
+    try:
+        log.console.emit(stamp, level, key, args, source, v)
     except Exception:
         pass
 
@@ -110,20 +115,4 @@ def bump(**kw):
             runtime[key] = runtime.get(key, 0) + delta
 
 
-def set_script_state(name, running):
-    with _lock:
-        if running:
-            scripts[name] = True
-        else:
-            scripts.pop(name, None)
 
-
-def running_scripts():
-    with _lock:
-        return sorted(scripts)
-
-
-def snapshot():
-    """(logs, items, version, runtime, scripts) - copies, safe for the UI loop."""
-    with _lock:
-        return list(logs), list(items), version, dict(runtime), sorted(scripts)

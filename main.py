@@ -1,15 +1,15 @@
-"""BiliHook - entry point.
+"""BiliRerank - terminal entry point.
 
-    C:\\app\\Python313\\python.exe main.py
+    C:\\app\\Python313\\python.exe main.py [--debug [N]] [--lang zh|en] [--start-on-boot]
 
-Importing src.ui pulls in PyQt-SiliconUI first (it pins QT_SCALE_FACTOR from the
-system DPI), then everything else lives under src/: core (config, settings,
-store, algorithm), backends (devtools / frida) and ui (Qt window, pages, theme).
+The program injects into the Bilibili desktop client, reranks its feed with a
+hardcoded GNN algorithm, streams colored logs to the terminal, and cancels the
+injection on exit.
 """
 
 import sys
 
-from src.ui.app import main
+from src.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

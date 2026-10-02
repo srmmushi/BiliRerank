@@ -1,13 +1,2 @@
-# GUI: PyQt5 + PyQt-SiliconUI (not on PyPI yet, install from source)
-PyQt5>=5.15.10
-# python -m pip install ./third_party/PyQt-SiliconUI
-#   (or: pip install "git+https://github.com/ChinaIceF/PyQt-SiliconUI")
-typing-extensions>=4.12.2
-python-dateutil>=2.9.0
-numpy>=1.24
-Pillow>=10.0
-
-# transport
+# Transport / injection (no GUI - this is a terminal tool)
 websockets>=13.0
-frida>=16.3.0
-frida-tools>=12.4.0

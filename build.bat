@@ -1,49 +1,49 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem BiliHook - package the tool into a single exe with PyInstaller.
-rem
-rem   build.bat
-rem
-rem Output: dist\BiliHook.exe   (windowed, icon drawn by src\ui\icon.py)
-rem The exe keeps settings, scripts and icon next to itself, never inside the
-rem PyInstaller extraction dir - see src\core\config.py.
+rem BiliRerank - package into a single CONSOLE exe, then keep ONLY the exe in the
+rem project folder. Every PyInstaller product (build/, dist/, *.spec and
+rem __pycache__) is removed so the directory stays clean. The exe is self-contained;
+rem on first run it writes settings.json next to itself.
 rem ---------------------------------------------------------------------------
 setlocal
 
 set PY=C:\app\Python313\python.exe
 if not exist "%PY%" set PY=python
-set NAME=BiliHook
+set NAME=BiliRerank
 
 cd /d "%~dp0"
-echo === BiliHook build ===
+echo === BiliRerank build ===
 echo python: %PY%
 
 echo [1/4] pyinstaller
-%PY% -m pip install --disable-pip-version-check --quiet pyinstaller
+"%PY%" -m pip install --disable-pip-version-check --quiet pyinstaller
 if errorlevel 1 goto :fail
 
-echo [2/4] icon
-if not exist "icon.ico" (
-    %PY% -c "from src.ui.icon import render; render('icon.ico')"
-)
-set ICONARG=
-if exist "icon.ico" set ICONARG=--icon icon.ico
-
-echo [3/4] building - this takes a couple of minutes
-%PY% -m PyInstaller --noconfirm --clean --onefile --windowed --name %NAME% %ICONARG% ^
-    --collect-data siui ^
-    --add-data "src\assets\scripts;src\assets\scripts" ^
-    --exclude-module tkinter --exclude-module PyQt6 --exclude-module PySide6 ^
-    --exclude-module pygame ^
+echo [2/4] building console exe - this takes a couple of minutes
+"%PY%" -m PyInstaller --noconfirm --clean --onefile --name %NAME% ^
+    --exclude-module tkinter --exclude-module PyQt5 --exclude-module PyQt6 ^
+    --exclude-module PySide6 --exclude-module PyQt-SiliconUI --exclude-module siui ^
+    --exclude-module numpy --exclude-module PIL --exclude-module matplotlib ^
     main.py
 if errorlevel 1 goto :fail
 
-echo [4/4] done
-dir /b dist
+echo [3/4] collect exe into the project folder
+if exist "%NAME%.exe" del /q "%NAME%.exe"
+copy /y "dist\%NAME%.exe" "%NAME%.exe" >nul
+if not exist "%NAME%.exe" goto :fail
+
+echo [4/4] remove all build products, keep only the exe
+rd /s /q build 2>nul
+rd /s /q dist 2>nul
+if exist "%NAME%.spec" del /q "%NAME%.spec"
+for /d /r . %%d in (__pycache__) do @if exist "%%d" rd /s /q "%%d" 2>nul
+del /s /q *.pyc 2>nul
+
+echo done: %NAME%.exe
 endlocal
 exit /b 0
 
-:fail
+::fail
 echo BUILD FAILED
 endlocal
 exit /b 1

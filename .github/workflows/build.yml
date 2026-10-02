@@ -26,32 +26,29 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install pyinstaller
-          python -m pip install "git+https://github.com/ChinaIceF/PyQt-SiliconUI"
 
       - name: package
         run: |
-          python -c "from src.ui.icon import render; render('icon.ico')"
-          python -m PyInstaller --noconfirm --clean --onefile --windowed ^
-            --name BiliHook --icon icon.ico ^
-            --collect-data siui ^
-            --add-data "src\assets\scripts;src\assets\scripts" ^
-            --exclude-module tkinter --exclude-module PyQt6 --exclude-module PySide6 ^
-            --exclude-module pygame ^
+          python -m PyInstaller --noconfirm --clean --onefile --console ^
+            --name BiliRerank ^
+            --exclude-module tkinter --exclude-module PyQt5 --exclude-module PyQt6 ^
+            --exclude-module PySide6 --exclude-module PyQt-SiliconUI --exclude-module siui ^
+            --exclude-module numpy --exclude-module PIL --exclude-module matplotlib ^
             main.py
         shell: cmd
 
       - name: smoke test
         run: |
-          if not exist dist\BiliHook.exe exit /b 1
+          if not exist dist\BiliRerank.exe exit /b 1
         shell: cmd
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BiliHook-windows
-          path: dist/BiliHook.exe
+          name: BiliRerank-windows
+          path: dist/BiliRerank.exe
 
       - name: release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/BiliHook.exe
+          files: dist/BiliRerank.exe

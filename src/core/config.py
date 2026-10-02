@@ -1,11 +1,10 @@
 """All the knobs in one place: client, transport, paths and scoring weights."""
 
 import os
-import shutil
 import sys
 
-APP_NAME = "BiliHook"
-VERSION = "0.5.0"
+APP_NAME = "BiliRerank"
+VERSION = "1.0.0-pre"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.dirname(HERE)
@@ -15,11 +14,6 @@ if getattr(sys, "frozen", False):
     ROOT = os.path.dirname(sys.executable)
 else:
     ROOT = os.path.dirname(SRC)
-
-BUNDLED_SCRIPTS = os.path.join(SRC, "assets", "scripts")   # shipped with the code
-SCRIPT_DIR_NAME = "script"                                 # released into the config folder
-ICON_NAME = "icon.ico"     # taskbar icon, sits next to the settings file:
-                           # drop your own icon.ico there to replace the generated one
 
 # The settings file can live anywhere; this tiny file next to the code remembers
 # where, so the choice survives a restart without needing the settings themselves.
@@ -56,50 +50,6 @@ def apply_settings_path(path):
 
 SETTINGS_PATH = _read_pointer() or DEFAULT_SETTINGS_PATH
 
-
-def script_dir():
-    """Hook scripts sit next to the settings file: moving the config moves them."""
-    return os.path.join(os.path.dirname(SETTINGS_PATH), SCRIPT_DIR_NAME)
-
-
-def icon_path():
-    """Taskbar icon, in the config folder so it can be swapped by the user."""
-    return os.path.join(os.path.dirname(SETTINGS_PATH), ICON_NAME)
-
-
-def user_icon():
-    """An icon the user dropped in (ico or png), if there is one."""
-    folder = os.path.dirname(SETTINGS_PATH)
-    for name in (ICON_NAME, "icon.png", "icon.ico"):
-        path = os.path.join(folder, name)
-        if os.path.exists(path):
-            return path
-    return None
-
-
-def release_scripts():
-    """Copy the scripts that ship with the code into the config folder at startup.
-
-    Existing files are never overwritten - the app does not modify hook scripts,
-    so a locally edited one stays as it is. Returns the names written.
-    """
-    target_dir = script_dir()
-    released = []
-    try:
-        os.makedirs(target_dir, exist_ok=True)
-        names = sorted(n for n in os.listdir(BUNDLED_SCRIPTS) if n.lower().endswith(".js"))
-    except OSError:
-        return released
-    for name in names:
-        target = os.path.join(target_dir, name)
-        if os.path.exists(target):
-            continue
-        try:
-            shutil.copyfile(os.path.join(BUNDLED_SCRIPTS, name), target)
-        except OSError:
-            continue
-        released.append(name)
-    return released
 
 # --- client -----------------------------------------------------------------
 PROCESS = "哔哩哔哩.exe"
@@ -141,35 +91,36 @@ LOG_ROWS = 60
 MAX_FEED = 200               # accumulated cards kept in memory
 UI_LIMIT = 60                # cards a single feed response contributes
 
-# --- algorithm --------------------------------------------------------------
+# --- algorithm (8-dimension scoring) -----------------------------------------
+# Final score = BASE + sum(weight_i * (dim_i * 2 - 1)); each dimension returns
+# [0,1] (neutral 0.5), so a weight is the points that dimension can swing the
+# score in either direction. All knobs are read by core.algorithms.engine.
 BASE_SCORE = 50.0
-MAX_PER_UP = 2
-DIVERSITY_PENALTY = 12.0
-SHORT_SECONDS = 75
-LONG_SECONDS = 7200
-SWEET_SECONDS = (180, 1800)
-FRESH_DAYS = 7
 
-W_ENGAGEMENT = 20.0
-W_LENGTH = 9.0
-W_FRESH = 5.0
-W_VOD = 3.0
-W_LIVE = -5.0
-W_SHORT = -11.0
-W_LONG = -6.0
-W_CLICKBAIT = -6.0
-W_CLICKBAIT_CAP = -18.0
-W_SPAM = -15.0
-W_TINY_TITLE = -9.0
-W_LOW_ENGAGEMENT = -8.0
-LOW_ENG_VIEWS = 5000
-LOW_ENG_RATIO = 0.015
+W_ENGAGEMENT = 20.0   # 互动质量
+W_DURATION = 10.0     # 时长契合
+W_RECENCY = 8.0       # 新鲜度
+W_AUTHORITY = 14.0    # 作者权威
+W_TITLE = 16.0        # 标题质量
+W_MOMENTUM = 12.0     # 增长动量
+W_INTEREST = 10.0     # 兴趣匹配
+W_DIVERSITY = 12.0    # 多样性
 
-CLICKBAIT_WORDS = (
-    "震惊", "必看", "你还不知道", "速看", "不看后悔", "史上最", "揭秘", "真相",
-    "居然", "没想到", "惊呆", "炸裂", "封神", "绝了", "偷偷", "重磅", "突发",
-)
-SPAM_WORDS = (
-    "优惠券", "领券", "低价", "包邮", "私信", "加群", "限时", "点击链接",
-    "带货", "下单", "抢购", "秒杀",
-)
+SHORT_SECONDS = 75      # below this reads as a filler clip
+LONG_SECONDS = 1800     # above this competes poorly for attention
+SWEET_SECONDS = (180, 900)   # duration sweet-spot window (seconds)
+FRESH_DAYS = 7          # recency half-life-ish constant
+
+# Growth-momentum boost: a young video with a high engagement ratio is treated as
+# "accelerating". All three knobs live here so tuning never means hunting in code.
+MOMENTUM_RATIO = 0.06        # engagement ratio that reads as hot word-of-mouth
+MOMENTUM_YOUNG_HOURS = 72    # only videos younger than this (hours) get the boost
+MOMENTUM_BOOST = 0.1         # points added to an accelerating young video
+
+MAX_PER_UP = 2              # hard cap on videos kept per uploader
+DIVERSITY_PENALTY = 12.0   # score knocked off de-duplicated items
+
+# Optional user interest profile, read by engine.InterestProfile.from_settings().
+# Leave empty for a neutral interest dimension.
+FAV_CATEGORIES = []        # e.g. ["知识", "科技", "游戏"]
+INTEREST_KEYWORDS = []     # e.g. ["python", "机器学习"]

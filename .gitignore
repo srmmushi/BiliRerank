@@ -2,14 +2,9 @@
 __pycache__/
 *.py[cod]
 
-# generated at run time: the released scripts, the taskbar icon, the config
-script/
-icon.ico
+# generated at run time: the config (and its optional relocation pointer)
 settings.json
 .settings-path
-
-# vendored PyQt-SiliconUI (see requirements.txt for how to install it)
-third_party/
 
 # build output (build.bat / pyinstaller)
 build/

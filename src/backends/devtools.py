@@ -21,6 +21,59 @@ import urllib.request
 
 from ..core import config, rerank, store
 
+# On a --windowed build the parent has no console, so a console-subsystem child
+# (tasklist / taskkill / the client launch) would otherwise pop its own terminal
+# window every time it runs. This flag stops that.
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+# Injected into the client's renderer once CDP is attached: a "回退" button next
+# to the client's refresh control that calls the biliBack CDP binding, which the
+# Python side turns into a history restore. (the injection layer cannot touch the
+# DOM, so the button has to be delivered through DevTools, which owns the page context.)
+BACK_BUTTON_JS = r"""
+(function () {
+  if (window.__biliRerankBack) return;
+  function add() {
+    if (document.getElementById('biliRerankBack')) return;
+    var refresh = document.querySelector('[class*="refresh" i], [data-name*="refresh" i], [class*="pull" i]');
+    if (!refresh) return;
+    var host = refresh.parentElement || refresh;
+    var b = document.createElement('div');
+    b.id = 'biliRerankBack';
+    b.textContent = '回退';
+    b.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;'
+      + 'height:24px;padding:0 10px;margin:0 6px;border-radius:6px;cursor:pointer;'
+      + 'font-size:12px;font-weight:600;color:#fff;background:#FB7299;'
+      + 'box-shadow:0 1px 3px rgba(0,0,0,.25);user-select:none;';
+    b.addEventListener('click', function (e) {
+      e.stopPropagation(); e.preventDefault();
+      try { biliBack(); } catch (_) {}
+    });
+    host.appendChild(b);
+  }
+  window.__biliRerankBack = true;
+  add();
+  var t = setInterval(add, 1500);
+  setTimeout(function () { clearInterval(t); }, 120000);
+})();
+"""
+
+# Evaluated on a small interval to learn which video is currently playing. The BVid
+# is read from the URL first (the video page), then from the SPA's initial state so
+# inline / mini-player playback is still caught. Returns "" when nothing plays.
+PLAYING_JS = r"""
+(function () {
+  try {
+    var m = (location.href || '').match(/\/video\/(BV[0-9A-Za-z]+)/);
+    if (m) return m[1];
+    var s = window.__INITIAL_STATE__ || {};
+    if (s.bvid) return s.bvid;
+    if (s.aid) return 'av' + s.aid;
+  } catch (e) {}
+  return '';
+})();
+"""
+
 try:
     import websockets
 except ImportError:          # reported in the log panel instead of crashing the GUI
@@ -30,6 +83,11 @@ BASE = "http://%s:%d" % (config.HOST, config.DEBUG_PORT)
 
 _thread = None
 _stop = threading.Event()
+
+# BVid of the video currently open in the player, learned by polling the page's
+# location.href. Left as-is when a non-video page is polled so a video watched in
+# another tab stays known even while the recommendation tab is being reranked.
+_page_bvid = None
 
 
 def is_running():
@@ -65,7 +123,7 @@ def _client_pids():
     try:
         out = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq " + config.PROCESS, "/FO", "CSV", "/NH"],
-            capture_output=True, timeout=20,
+            capture_output=True, timeout=20, creationflags=CREATE_NO_WINDOW,
         ).stdout
     except Exception:
         return []
@@ -191,7 +249,8 @@ def _process_running():
 
 def _kill_client():
     try:
-        subprocess.run(["taskkill", "/IM", config.PROCESS, "/F"], capture_output=True, timeout=20)
+        subprocess.run(["taskkill", "/IM", config.PROCESS, "/F"], capture_output=True,
+                        timeout=20, creationflags=CREATE_NO_WINDOW)
         time.sleep(1.5)
         return True
     except Exception as exc:
@@ -234,7 +293,8 @@ def restart_client():
         _kill_client()
     store.add_log("info", "cdp.launching", {"exe": exe, "port": config.DEBUG_PORT})
     try:
-        subprocess.Popen([exe, "--remote-debugging-port=%d" % config.DEBUG_PORT], close_fds=True)
+        subprocess.Popen([exe, "--remote-debugging-port=%d" % config.DEBUG_PORT],
+                         close_fds=True, creationflags=CREATE_NO_WINDOW)
     except Exception as exc:
         store.add_log("error", "cdp.launch_failed", {"err": str(exc)})
         return False
@@ -325,6 +385,8 @@ async def _handle_pause(session, params, state):
         await _continue(session, request_id, state)
         return
 
+    # feed the engine the video currently playing (so the algorithms can use it)
+    rerank.set_playing(_page_bvid)
     result = rerank.apply(raw)
     if result is None:
         await _continue(session, request_id, state)
@@ -362,6 +424,39 @@ async def _handle_pause(session, params, state):
     store.add_log("info", "rr.added", {"added": added, "total": len(store.items)})
     store.add_log("info", "rr.head", {"list": ", ".join(report["head"]) or "-"})
 
+    # show the full list of videos the feed delivered (refresh / first load),
+    # one per line so long titles do not wrap into an unreadable block
+    titles = report.get("titles") or []
+    if titles:
+        numbered = "\n".join("%2d. %s" % (i + 1, t) for i, t in enumerate(titles))
+        store.add_log("info", "rr.feed_list",
+                      {"n": report["kept"], "list": numbered}, v=1)
+
+
+def _do_back():
+    """Restore the feed list from before the last client refresh (wired to the
+    client's own 回退 button through a CDP binding)."""
+    rows = store.pop_history()
+    if not rows:
+        store.add_log("warn", "py.back_empty")
+        return
+    store.set_items(rows)
+    store.add_log("success", "py.back_done", {"n": len(rows)})
+
+
+async def _install_back_button(session):
+    """Expose the biliBack binding and drop the 回退 button into the renderer."""
+    await session.send("Runtime.enable", {})
+    try:
+        await session.send("Runtime.addBinding", {"name": "biliBack"})
+    except Exception:
+        pass
+    try:
+        await session.send("Runtime.evaluate",
+                           {"expression": BACK_BUTTON_JS, "returnByValue": False})
+    except Exception:
+        pass
+
 
 async def _attach(target):
     state = {"continue": "", "seen": 0}
@@ -373,15 +468,45 @@ async def _attach(target):
             await session.send("Fetch.enable", {
                 "patterns": [{"urlPattern": "*", "requestStage": "Response"}]
             })
+            await _install_back_button(session)
             store.add_log("success", "cdp.attached", {"title": (target.get("title") or "")[:40]})
+            last_poll = 0.0
             try:
                 while not _stop.is_set():
                     try:
                         msg = await asyncio.wait_for(session.events.get(), timeout=1.0)
                     except asyncio.TimeoutError:
-                        continue
-                    if msg.get("method") == "Fetch.requestPaused":
-                        await _handle_pause(session, msg.get("params") or {}, state)
+                        msg = None
+                    if msg is not None:
+                        method = msg.get("method")
+                        if method == "Fetch.requestPaused":
+                            await _handle_pause(session, msg.get("params") or {}, state)
+                        elif method == "Runtime.bindingCalled":
+                            # the client's 回退 button was clicked
+                            if (msg.get("params") or {}).get("name") == "biliBack":
+                                _do_back()
+                        elif method == "Runtime.executionContextsCleared":
+                            # SPA navigation dropped the injected button - put it back
+                            await _install_back_button(session)
+                    # learn which video is currently playing (polled, not per-request)
+                    now = time.time()
+                    if now - last_poll >= 3.0:
+                        last_poll = now
+                        try:
+                            res = await session.send(
+                                "Runtime.evaluate",
+                                {"expression": PLAYING_JS, "returnByValue": True})
+                            value = ((((res or {}).get("result") or {}).get("value") or "") or "")
+                            if value:
+                                _page_bvid = str(value)
+                        except Exception:
+                            # an SPA navigation may have recycled the execution context;
+                            # re-enable Runtime so the next poll recovers instead of
+                            # silently getting stuck on the first detection forever
+                            try:
+                                await session.send("Runtime.enable", {})
+                            except Exception:
+                                pass
             finally:
                 reader.cancel()
     except Exception as exc:

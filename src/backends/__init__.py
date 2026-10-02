@@ -1,23 +1,21 @@
 """Transport layer.
 
-`inject()` is what the Inject button calls: devtools takes the feed over (it is
-the only backend that can rewrite the response) and the enabled frida scripts
-are loaded on top for anything else. `stop_all()` tears both down.
+`inject()` is what the CLI calls: devtools takes the feed over (it is the only
+backend - it intercepts the response, reranks and writes it back). `stop_all()`
+tears it down.
 
-`start_watcher()` is the automation the settings page controls: it watches the
-client process and injects when it appears - the tool never launches the client
-itself.
+`start_watcher()` watches the client process and injects when it appears - the
+tool never launches the client itself.
 """
 
 import threading
 import time
 
 from ..core import config, settings, store
-from . import devtools, frida_hook
+from . import devtools
 
-__all__ = ["devtools", "frida_hook", "inject", "stop_all", "restart_client",
-           "start_watcher", "stop_watcher", "start_script", "stop_script", "back",
-           "CDP_GRACE"]
+__all__ = ["devtools", "inject", "stop_all", "restart_client",
+           "start_watcher", "stop_watcher", "back", "CDP_GRACE"]
 
 CDP_GRACE = 40               # polls of 0.5s while the devtools backend settles
 
@@ -27,7 +25,7 @@ _seen = False
 
 
 def inject():
-    """DevTools for the feed plus every enabled frida script."""
+    """DevTools for the feed (the only backend)."""
     store.add_log("info", "inject.start")
     store.set_runtime(connecting=True, backend="")
 
@@ -38,21 +36,15 @@ def inject():
                 break
         if store.runtime["running"]:
             store.add_log("success", "inject.cdp_ok")
-            frida_hook.start()          # extra hooks on top, feeds are de-duplicated
             return True
-    else:
-        store.set_runtime(connecting=False)
+    store.set_runtime(connecting=False)
 
     store.add_log("warn", "inject.fallback")
-    if frida_hook.start():
-        return True
-    store.set_runtime(connecting=False)
     return False
 
 
 def stop_all():
     devtools.stop()
-    frida_hook.stop()
     store.set_runtime(connecting=False, running=False, backend="")
 
 
@@ -67,18 +59,6 @@ def back():
     return True
 
 
-def start_script(name):
-    """Tools page: inject one script on its own."""
-    store.add_log("info", "py.script_start", {"script": name}, source=name)
-    return frida_hook.start_script(name)
-
-
-def stop_script(name):
-    """Tools page: stand one script down."""
-    store.add_log("info", "py.script_stop", {"script": name}, source=name)
-    return frida_hook.stop_script(name)
-
-
 def restart_client():
     return devtools.restart_client()
 
@@ -90,7 +70,7 @@ def start_watcher():
     if _watch_thread is not None and _watch_thread.is_alive():
         return
     _watch_stop.clear()
-    _watch_thread = threading.Thread(target=_watch, daemon=True, name="biliHook-watch")
+    _watch_thread = threading.Thread(target=_watch, daemon=True, name="biliRerank-watch")
     _watch_thread.start()
 
 
